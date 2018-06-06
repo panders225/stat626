@@ -1,0 +1,108 @@
+---
+title: "panders2_stat626_hw03"
+author: "Philip Anderson; panders2@tamu.edu"
+date: "6/6/2018"
+output: pdf_document
+---
+
+```{r setup, message=FALSE}
+library("tidyverse")
+library("gmodels")
+```
+
+
+# Question I
+## Question I) a)
+
+```{r}
+# simulate two random walks with initial values = 0
+
+set.seed(7)
+y <- cumsum(c(0, rnorm(99, 0, 1)))
+set.seed(8)
+x <- cumsum(c(0, rnorm(99, 0, 1)))
+
+```
+
+## Question I) a) i)
+
+```{r}
+
+plot(x, y, pch=16, cex=1.25
+     , main="x realization vs. y realization ScatterPlot"
+     )
+
+```
+
+From the above, it appears that there is a non-linear negative relationship between y and x.  
+
+```{r}
+# nonparametric correlation coefficient
+cor(x, y, method="spearman")
+```
+
+## Question I) a) ii)
+
+I expect the hypothesis to be rejected.  There is a clear (to me) negative relationship between the variables, and we have a non-trivial amount of data.
+
+## Question I) a) iii)
+
+```{r}
+lin_mod <- lm(y ~ x)
+summary(lin_mod)
+```
+
+From the summary printout, it is clear the beta_1 coefficient is negative, and we are soundly rejecting the null hypothesis.  Because of the random nature of the random walk, I would not necessarily expect this relationship to hold under repeated trials.
+
+## Question I) b)
+
+```{r}
+
+beta_val_vec <- numeric(1000)
+p_val_vec <- numeric(1000)
+
+for (i in 1:1000) {
+
+      set.seed(i)
+      y <- cumsum(c(0, rnorm(99, 0, 1)))
+      set.seed(5000 + i)
+      x <- cumsum(c(0, rnorm(99, 0, 1)))
+      
+      lin <- lm(y ~ x)
+      lin_summ <- summary(lin)
+      beta_val <- lin_summ$coefficients[2,1]
+      p_val <- lin_summ$coefficients[2,4]
+      beta_val_vec[i] <- beta_val
+      p_val_vec[i] <- p_val
+      
+}
+
+outcome <- data.frame(cbind(beta_val_vec, p_val_vec))
+```
+
+```{r}
+
+
+outcome$beta_pos <- ifelse(outcome$beta_val_vec >= 0, "pos", "neg")
+outcome$signif <- ifelse(outcome$p_val_vec < 0.05, "sig", "not_sig")
+
+table(outcome$beta_pos, outcome$signif)
+```
+
+```{r}
+gmodels::CrossTable(outcome$beta_pos, outcome$signif)
+```
+
+```{r}
+
+length(p_val_vec[p_val_vec > 0.05]) / length(p_val_vec)
+
+length(beta_val_vec[beta_val_vec > 0])
+length(beta_val_vec[beta_val_vec < 0])
+
+```
+
+
+
+
+
