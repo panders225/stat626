@@ -1,0 +1,127 @@
+---
+title: "STAT_626 Assignment 04"
+author: "Philip Anderson; panders2@tamu.edu"
+date: "6/14/2018"
+output: pdf_document
+---
+
+```{r setup, message=FALSE}
+library("astsa")
+library("tidyverse")
+```
+
+```{r, echo=F}
+#ARMAtoMA(ar=0.5, ma=0, 10)
+```
+
+```{r, echo=F}
+#ARMAtoMA(ar=c(1, -0.5), ma=-1, 10)
+```
+
+# Question 3.4
+x_t = -0.9x_t-2 + w_t
+
+```{r}
+# give the roots of the characteristic equation
+z <- c(1, 0, .9)
+# solve for the roots of autoregressive polynomial
+paste0("Roots of Autoregressive Polynomial given by: " ,(a <- polyroot(z)[1]))
+arg <- Arg(a)/(2*pi)
+paste0("Pseudo-period given by: ", 1 / arg) # pseudo-period
+
+```
+
+
+```{r}
+set.seed(1914)
+ar2 = arima.sim(list(order=c(2,0,0), ar=c(0,-.9)), n = 48)
+plot(ar2, axes=FALSE, xlab="Time",main="Simulated Values from Specified AR(2) model")
+axis(2)  
+axis(1, at=seq(0,48,by=4))  
+box()
+abline(v=seq(0,48,by=4), lty=2)
+
+
+```
+
+
+```{r}
+# plot the ACF
+ACF = ARMAacf(ar=c(0,-.9), ma=0, 50)
+plot(ACF, type="h", xlab="lag", main="Theoretical ACF for AR(2) model")
+abline(h=0)
+```
+
+Because the coefficient on the AR model is negative, the lags will flip between being positive and negative at every lag iteration.
+
+# Question 3.17
+## Question 3.17.A
+
+```{r}
+astsa::tsplot(cpg ,main="Plot of c_t")
+```
+
+The plot seems to be showing an exponential decrease in the price per gigabyte of storage.
+
+## Question 3.17.B
+
+```{r}
+# regress log(c_t) on a time index
+lin_mod <- lm(log(cpg) ~ time(cpg))
+```
+
+
+```{r}
+# plot the fitted line to compare it to the logged data
+ts.plot(log(cpg))
+abline(lin_mod)
+```
+
+The fitted regression line is very close to the log transformation of the data.  $$c_t \approx \alpha exp(\beta t) $$ 
+
+## Question 3.17.C
+Plot the residuals of the model and comment.
+
+```{r}
+plot(density(resid(lin_mod)), main="Density Plot of Residuals")
+```
+
+The density plot looks good, but keep in mind that we may have serial correlation that this isn't capturing.
+
+
+```{r}
+ts.plot(resid(lin_mod), main="Residual Time Series Plot")
+acf2(resid(lin_mod))
+```
+
+It appears from the time series plot and the ACF of the residuals that the errors display some level of serial or autocorrelation.  A regression that does not assume the errors to be i.i.d. may be necessary.
+
+## Question 3.17.D
+
+```{r}
+# refit the model, but using the fact that the errors are autocorrelated
+serial_mod <- sarima(
+                    xdata=log(cpg)
+                    , p=c(1)
+                    , d=c(0)
+                    , q=c(0)
+                    , xreg=c(time(cpg))
+                    )
+
+```
+
+```{r}
+astsa::tsplot(serial_mod$fit$residuals, main="Time series Plot of AutoCorrelated Regression")
+acf2(serial_mod$fit$residuals)
+```
+
+This appears to be a better fit to the data - we have eliminated the evidence of serial correlation from the model errors.
+
+```{r}
+paste0("Coefficients for new Model: ")
+print(serial_mod$fit$coef)
+
+cat("\nCoefficients for Linear Model: ")
+print(lin_mod$coefficients)
+
+```
