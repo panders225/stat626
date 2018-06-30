@@ -1,30 +1,173 @@
 ---
 title: "Assignment 05; STAT 626"
 author: "Philip Anderson; panders2@tamu.edu"
-date: "6/29/2018"
+date: "7/03/2018"
 output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+library("astsa")
 ```
 
-## R Markdown
+# Question 3.19
+Plot theoretical ACF of SARIMA(0, 0, 1) x (1,0,0)12.  
+PHI = 0.8, theta=0.5. lags=50
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r}
+(phi <- c(rep(0, 11), 0.8))
+paste0("phi length: ", length(phi))
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+ACF <- ARMAacf(ar=phi, ma=0.5, lag.max=50)
+plot(ACF, type="h"
+     , xlab="lags" 
+     , main=expression(paste("Theoretical ACF: ", Phi[12], "=0.8 ", theta, "=0.5")))
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+# Question 3.20
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+# first plot the 
+par(mfrow=c(4,1))
+astsa::tsplot(chicken, main="Time-Index Plot of Chicken")
+astsa::tsplot(diff(chicken), main="First Difference Taken")
+astsa::tsplot(diff(diff(chicken), 4), main="Quarterly Difference of First Difference")
+astsa::tsplot(diff(diff(chicken), 12), main="Annual Difference of First Difference")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r, echo=F,  results='hide'}
+acf2(diff(chicken), max.lag=100)
+acf2(diff(diff(chicken), 4), max.lag=100)
+acf2(diff(diff(chicken), 12), max.lag=100)
+```
+
+From the above ACFs+PACFs, it appears that annual differencing is a good option.  The final ACF+PACF combination shows a tailing off in the ACF, but a cut-off in the PACF after seasonal lag 3.  This suggests that a suitable model may be SAR(3), P=3, Q=0 in S=12, or SARIMA(3,1,0)x(3,1,0)_12.
+
+```{r, echo=F, results='hide'}
+smod <- sarima(xdata=chicken, p=3, d=1, q=0, P=3, D=1, Q=0, S=12)
+print(smod)
+```
+
+The above plots look ok, but the Ljung-Box p-values are highly significant, and the model fit procedure failed, which is not a good sign.  Let's loop through some potential variations of the model and see if we can improve on the BIC.
+
+I am going to do a nested for-loop.  AR differences of [1,2,3], MA differences of [1,2,3], at both the immediate and seasonal levels.  Also going to try Seasonal = 4, 12, in case the chicken prices fluctuate quarterly.
+
+
+```{r, fig.keep='none'}
+puzzle <- cbind(0, 0, 0, 0, 0)
+
+for (k in c(12, 4)) {
+  for (i in 0:3) {
+    for (j in 0:3) {
+      smod <- try(sarima(xdata=chicken, p=i, d=1, q=j, P=i, D=1, Q=j, S=k), silent=T)
+      
+        if(class(smod)=="list") {
+            piece <- cbind(i, j, k, smod$AIC, smod$BIC)
+                                }
+        else {
+            piece <- cbind(i, j, k, 0, 0)
+             }
+
+      puzzle <- rbind(puzzle, piece)
+    }
+  }
+}
+```
+
+```{r}
+puzzle
+```
+
+Of the models evaluated, it looks like SARIMA(3,1,1)x(3,1,1)12 is the strongest combination of what I had originally hypothesized and what is borne out by fit statistics.
+
+```{r}
+sarima(xdata=chicken, p=3, d=1, q=1, P=3, D=1, Q=1, S=12)
+
+```
+
+```{r}
+sarima.for(xdata=chicken, p=3, d=1, q=1, P=3, D=1, Q=1, S=12, n.ahead=12)
+```
+
+
+# Question 3.21
+
+```{r}
+par(mfrow=c(4,1))
+astsa::tsplot(UnempRate)
+astsa::tsplot(log(UnempRate))
+astsa::tsplot(diff(log(UnempRate)))
+astsa::tsplot(diff(diff(log(UnempRate)), 12))
+
+```
+
+```{r}
+acf2(diff(diff(log(UnempRate)), 12), 75)
+```
+
+The ACF cuts off after the first season, but the PACF tails off.  This could suggest a SAM model of (0,1,1)x(0,1,1)12, but we will work through several iterations to make sure.
+
+
+```{r, fig.keep='none'}
+puzzle <- cbind(0, 0, 0, 0, 0)
+
+for (k in c(12)) {
+  for (i in 0:3) {
+    for (j in 0:3) {
+      smod <- try(sarima(xdata=UnempRate, p=i, d=1, q=j, P=i, D=1, Q=j, S=k), silent=T)
+      
+        if(class(smod)=="list") {
+            piece <- cbind(i, j, k, smod$AIC, smod$BIC)
+                                }
+        else {
+            piece <- cbind(i, j, k, 0, 0)
+             }
+
+      puzzle <- rbind(puzzle, piece)
+    }
+  }
+}
+```
+
+
+```{r}
+puzzle
+```
+
+The model hypothesized does not have dramatically different results from the others.  
+
+```{r}
+
+smod <- sarima(xdata=UnempRate, p=0, d=1, q=1, P=0, D=1, Q=1, S=12)
+smod
+```
+
+```{r}
+sarima.for(xdata=UnempRate, p=0, d=1, q=1, P=0, D=1, Q=1, S=12, n.ahead=12)
+```
+
+
+# Question 3.24
+
+Rerun the model in that example but fit an ARIMA(2, 0, 0) × (0, 1, 1)12 to the residuals. Does this improve the fit?
+
+```{r}
+# replicate the original example
+dummy <- ifelse(soi<0, 0, 1)
+fish  = ts.intersect(rec, soiL6=lag(soi,-6), dL6=lag(dummy,-6), dframe=TRUE)
+summary(fit <- lm(rec ~soiL6*dL6, data=fish, na.action=NULL)) 
+tsplot(resid(fit))
+acf2(resid(fit))
+intract <- fish$soiL6*fish$dL6
+sarima(xdata=rec, p=2, d=0, q=0, xreg=cbind(fish$soiL6, fish$dL6, intract))
+
+```
+
+```{r}
+# now, rerun the SARIMA model with seasonal component
+sarima(xdata=rec, p=2, d=0, q=0, P=0, D=1, Q=1, S=12, xreg=cbind(fish$soiL6, fish$dL6, intract))
+```
+
+The specified SARIMA model is a marginally better fit over the ARIMA model.
+
+
