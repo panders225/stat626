@@ -1,0 +1,39 @@
+---
+title: "error block test"
+author: "Philip Anderson; panders2@tamu.edu"
+date: "7/1/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library("astsa")
+library("dplyr")
+library("conflicted")
+```
+
+
+```{r, results='hide', fig.keep='none', message=F}
+# replicate the original example
+dummy = ifelse(soi<0, 0, 1)
+fish  = ts.intersect(rec, soiL6=stats::lag(soi,-6), dL6=stats::lag(dummy,-6), dframe=TRUE)
+summary(fit <- lm(rec ~soiL6*dL6, data=fish, na.action=NULL)) 
+attach(fish)
+tsplot(resid(fit))
+acf2(resid(fit)) # indicates AR(2)
+intract = soiL6*dL6 # interaction term
+```
+
+```{r, results='hide'}
+smod <- sarima(rec,2,0,0, xreg = cbind(soiL6, dL6, intract))
+```
+```{r}
+smod
+```
+
+```{r, results='hide'}
+smod <- sarima(rec,2,0,0, 0, 1, 1, 12, xreg = cbind(soiL6, dL6, intract))
+```
+```{r}
+smod
+detach(fish)
+```

@@ -7,6 +7,8 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 library("astsa")
+library("tidyverse")
+library("conflicted")
 ```
 
 # Question 3.19
@@ -14,7 +16,7 @@ Plot theoretical ACF of SARIMA(0, 0, 1) x (1,0,0)12.
 PHI = 0.8, theta=0.5. lags=50
 
 ```{r}
-(phi <- c(rep(0, 11), 0.8))
+phi <- c(rep(0, 11), 0.8)
 paste0("phi length: ", length(phi))
 
 ACF <- ARMAacf(ar=phi, ma=0.5, lag.max=50)
@@ -27,7 +29,7 @@ plot(ACF, type="h"
 # Question 3.20
 
 ```{r}
-# first plot the 
+# first plot the time series for several variations of our series
 par(mfrow=c(4,1))
 astsa::tsplot(chicken, main="Time-Index Plot of Chicken")
 astsa::tsplot(diff(chicken), main="First Difference Taken")
@@ -35,25 +37,28 @@ astsa::tsplot(diff(diff(chicken), 4), main="Quarterly Difference of First Differ
 astsa::tsplot(diff(diff(chicken), 12), main="Annual Difference of First Difference")
 ```
 
-```{r, echo=F,  results='hide'}
-acf2(diff(chicken), max.lag=100)
-acf2(diff(diff(chicken), 4), max.lag=100)
-acf2(diff(diff(chicken), 12), max.lag=100)
+Now, plot the ACF and PACF for each of these to gather more info about them.
+
+```{r,  results='hide'}
+acf2(chicken, max.lag=50, main="ACF + PACF for Chicken Series")
+acf2(diff(chicken), max.lag=50, main="First Difference Taken")
+acf2(diff(diff(chicken), 4), max.lag=50, main="Quarterly Difference of First Difference")
+acf2(diff(diff(chicken), 12), max.lag=50, main="Annual Difference of First Difference")
 ```
 
-From the above ACFs+PACFs, it appears that annual differencing is a good option.  The final ACF+PACF combination shows a tailing off in the ACF, but a cut-off in the PACF after seasonal lag 3.  This suggests that a suitable model may be SAR(3), P=3, Q=0 in S=12, or SARIMA(3,1,0)x(3,1,0)_12.
+From the above ACFs+PACFs, it appears that annual differencing of the first differenced series is a good option.  The final ACF+PACF combination shows a tailing off in the ACF, but a cut-off in the PACF after seasonal lag 3.  This suggests that a suitable model may be SAR(3), P=3, Q=0 in S=12, or SARIMA(3,1,0)x(3,1,0)_12.  Let's fit that here:
 
-```{r, echo=F, results='hide'}
+```{r, results='hide'}
 smod <- sarima(xdata=chicken, p=3, d=1, q=0, P=3, D=1, Q=0, S=12)
 print(smod)
 ```
 
 The above plots look ok, but the Ljung-Box p-values are highly significant, and the model fit procedure failed, which is not a good sign.  Let's loop through some potential variations of the model and see if we can improve on the BIC.
 
-I am going to do a nested for-loop.  AR differences of [1,2,3], MA differences of [1,2,3], at both the immediate and seasonal levels.  Also going to try Seasonal = 4, 12, in case the chicken prices fluctuate quarterly.
+I am going to do a nested for-loop.  AR differences of [0,1,2,3], MA differences of [0,1,2,3], at both the immediate and seasonal levels.  Also going to try Seasonal = 4, 12, in case the chicken prices fluctuate quarterly.
 
 
-```{r, fig.keep='none'}
+```{r, results='hide', fig.keep='none', message=FALSE, warning=FALSE}
 puzzle <- cbind(0, 0, 0, 0, 0)
 
 for (k in c(12, 4)) {
@@ -75,15 +80,20 @@ for (k in c(12, 4)) {
 ```
 
 ```{r}
-puzzle
+# print our results, in order of ascending BIC and AIC
+puzzle2 <- data.frame(puzzle)
+names(puzzle2) <- c("i", "j", "k", "AIC", "BIC")
+puzzle2 %>% dplyr::arrange(BIC, AIC)
 ```
 
 Of the models evaluated, it looks like SARIMA(3,1,1)x(3,1,1)12 is the strongest combination of what I had originally hypothesized and what is borne out by fit statistics.
 
-```{r}
-sarima(xdata=chicken, p=3, d=1, q=1, P=3, D=1, Q=1, S=12)
+```{r, results='hide'}
+smod <- sarima(xdata=chicken, p=3, d=1, q=1, P=3, D=1, Q=1, S=12)
 
 ```
+
+Forecast this model 12 months into the future.
 
 ```{r}
 sarima.for(xdata=chicken, p=3, d=1, q=1, P=3, D=1, Q=1, S=12, n.ahead=12)
@@ -93,22 +103,25 @@ sarima.for(xdata=chicken, p=3, d=1, q=1, P=3, D=1, Q=1, S=12, n.ahead=12)
 # Question 3.21
 
 ```{r}
+# first, fit several time series plots to variations of this data
 par(mfrow=c(4,1))
-astsa::tsplot(UnempRate)
-astsa::tsplot(log(UnempRate))
-astsa::tsplot(diff(log(UnempRate)))
-astsa::tsplot(diff(diff(log(UnempRate)), 12))
+astsa::tsplot(UnempRate, main="Original Unemployment Series")
+astsa::tsplot(log(UnempRate), main="Logged Unemployement Series")
+astsa::tsplot(diff(log(UnempRate)), main="First Differenced Logged Unemployment Series")
+astsa::tsplot(diff(diff(log(UnempRate)), 12), main="Annually Differenced First Differenced Logged Unemployment Series")
 
 ```
 
-```{r}
-acf2(diff(diff(log(UnempRate)), 12), 75)
+The only one of these that looks potentially stationary is the final attempt.  Let's plot the ACF and PACF to get additional information.
+
+```{r, results='hide'}
+astsa::acf2(diff(diff(log(UnempRate)), 12), 75, main="Annually Differenced First Differenced Logged Unemployment Series")
 ```
 
-The ACF cuts off after the first season, but the PACF tails off.  This could suggest a SAM model of (0,1,1)x(0,1,1)12, but we will work through several iterations to make sure.
+The ACF cuts off after the first season, but the PACF tails off.  This could suggest a SMA model, or SARIMA(0,1,1)x(0,1,1)12, but we will work through several iterations to make sure.
 
 
-```{r, fig.keep='none'}
+```{r, results='hide', fig.keep='none', warning=F}
 puzzle <- cbind(0, 0, 0, 0, 0)
 
 for (k in c(12)) {
@@ -131,16 +144,19 @@ for (k in c(12)) {
 
 
 ```{r}
-puzzle
+puzzle2 <- data.frame(puzzle)
+names(puzzle2) <- c("i", "j", "k", "AIC", "BIC")
+puzzle2 %>% dplyr::arrange(BIC, AIC)
 ```
 
 The model hypothesized does not have dramatically different results from the others.  
 
-```{r}
-
+```{r, results='hide'}
 smod <- sarima(xdata=UnempRate, p=0, d=1, q=1, P=0, D=1, Q=1, S=12)
 smod
 ```
+
+Forecast this series 12 months into the future.
 
 ```{r}
 sarima.for(xdata=UnempRate, p=0, d=1, q=1, P=0, D=1, Q=1, S=12, n.ahead=12)
@@ -149,25 +165,35 @@ sarima.for(xdata=UnempRate, p=0, d=1, q=1, P=0, D=1, Q=1, S=12, n.ahead=12)
 
 # Question 3.24
 
-Rerun the model in that example but fit an ARIMA(2, 0, 0) × (0, 1, 1)12 to the residuals. Does this improve the fit?
+Rerun the model from Example 3.33, but fit an ARIMA(2, 0, 0) × (0, 1, 1)12 to the residuals. Does this improve the fit?
 
-```{r}
+```{r, results='hide', fig.keep='none', message=F}
 # replicate the original example
-dummy <- ifelse(soi<0, 0, 1)
-fish  = ts.intersect(rec, soiL6=lag(soi,-6), dL6=lag(dummy,-6), dframe=TRUE)
+dummy = ifelse(soi<0, 0, 1)
+fish  = ts.intersect(rec, soiL6=stats::lag(soi,-6), dL6=stats::lag(dummy,-6), dframe=TRUE)
 summary(fit <- lm(rec ~soiL6*dL6, data=fish, na.action=NULL)) 
+attach(fish)
 tsplot(resid(fit))
-acf2(resid(fit))
-intract <- fish$soiL6*fish$dL6
-sarima(xdata=rec, p=2, d=0, q=0, xreg=cbind(fish$soiL6, fish$dL6, intract))
-
+acf2(resid(fit)) # indicates AR(2)
+intract = soiL6*dL6 # interaction term
 ```
 
+```{r, results='hide'}
+smod <- sarima(rec,2,0,0, xreg = cbind(soiL6, dL6, intract))
+```
 ```{r}
-# now, rerun the SARIMA model with seasonal component
-sarima(xdata=rec, p=2, d=0, q=0, P=0, D=1, Q=1, S=12, xreg=cbind(fish$soiL6, fish$dL6, intract))
+smod
 ```
 
-The specified SARIMA model is a marginally better fit over the ARIMA model.
+```{r, results='hide'}
+smod <- sarima(rec,2,0,0, 0, 1, 1, 12, xreg = cbind(soiL6, dL6, intract))
+```
+```{r}
+smod
+detach(fish)
+```
+
+
+The specified SARIMA model is a marginally better fit over the ARIMA model, according to the BIC fit statistic.  The residual ACF and QQ-Plots appear slightly improved as well.  
 
 
